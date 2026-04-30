@@ -1,7 +1,9 @@
-let cachedDevices = null;
+import chalk from "chalk";
 import storage from "./storage.js";
 import packageJson from '../package.json' with { type: 'json' };
+import {debugLog} from "./helpers.js";
 
+let cachedDevices = null;
 const CACHE_LIFETIME = 1000 * 3600 * 24 * 3; // 3d
 
 export async function getZeppDevices() {
@@ -16,11 +18,13 @@ export async function getZeppDevices() {
             if(r.status !== 200)
                 throw new Error(`Can't fetch zepp_devices.json map, status=${r.status}`);
             cachedDevices = await r.json();
+            debugLog(`Loaded ${cachedDevices.length} devices from GitHub`);
             await storage.setItem("devices", JSON.stringify(cachedDevices));
             await storage.setItem("devicesExpire", Date.now() + CACHE_LIFETIME);
             await storage.setItem("appRelease", packageJson.version);
         } else {
             cachedDevices = JSON.parse(await storage.getItem("devices"));
+            debugLog(`Loaded ${cachedDevices.length} devices from local cache`);
         }
     }
 
@@ -37,13 +41,30 @@ export async function getDevicesByParams(screenType, width, height, chipset) {
         height = 490;
 
     const devices = [];
-    for(const dev of await getZeppDevices()) {
-        if(dev.chipset === chipset
-            && dev.screenShape === screenType
-            && dev.screenWidth === width
-            && dev.screenHeight === height
-        ) {
-            devices.push(dev);
+    const allDevices = await getZeppDevices();
+
+    for (const dev of allDevices) {
+        if (dev.screenWidth === width && dev.screenHeight === height) {
+            const shapeMatch = dev.screenShape === screenType;
+
+            if (shapeMatch) {
+                const isPerfect = dev.chipset === chipset;
+                if (isPerfect) {
+                    debugLog(chalk.green(`  [MATCH FOUND] ${dev.deviceName} matches perfectly!`));
+                } else {
+                    debugLog(
+                        chalk.yellow(
+                            `  [SOFT MATCH] ${dev.deviceName}: Resolution OK, but chipset ZAB(${chipset}) != DB(${dev.chipset})`,
+                        ),
+                    );
+                }
+
+                // Возвращаем объект с флагом качества совпадения
+                devices.push({
+                    data: dev,
+                    perfect: isPerfect,
+                });
+            }
         }
     }
 

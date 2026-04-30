@@ -1,6 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
-import {SelfHostConfigsGenerator} from "./SelfHostConfigsGenerator.js";
+import { SelfHostConfigsGenerator } from "./SelfHostConfigsGenerator.js";
 
 export class SelfHostFolderGenerate {
     static async apply(bundle, baseUrl, withSubFolder) {

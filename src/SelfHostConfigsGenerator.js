@@ -1,4 +1,6 @@
-import {getDevicesByParams, getPlatformToDeviceMap} from "./ZeppDevices.js";
+import chalk from "chalk";
+import { getDevicesByParams, getPlatformToDeviceMap } from "./ZeppDevices.js";
+import {debugLog} from "./helpers.js";
 
 const platformToDevice = await getPlatformToDeviceMap();
 
@@ -7,9 +9,6 @@ export class SelfHostConfigsGenerator {
         return new SelfHostConfigsGenerator(bundle).generate(baseURL, withSubFolder);
     }
 
-    /**
-     * @param {ZeppBundle} bundle
-     */
     constructor(bundle) {
         this.bundle = bundle;
     }
@@ -38,39 +37,45 @@ export class SelfHostConfigsGenerator {
 
         const runtimeMinVersion = deviceManifest?.runtime?.apiVersion?.minVersion ?? null;
 
-        for(const row of input) {
-            if(row.deviceSource) {
+        for (const row of input) {
+            debugLog(
+                chalk.blue(
+                    `\n[CHECKING PACKAGE] Res: ${row.screenResolution}, CPU: ${row.cpuPlatform}, Shape: ${row.screenType}`,
+                ),
+            );
+
+            if (row.deviceSource) {
                 // Easy mode
                 const device = platformToDevice.get(row.deviceSource);
                 if (!device) {
-                    console.warn(`Unknown platformSource ${row.deviceSource}, skipping`);
+                    debugLog(chalk.red(`[MISSING ID] Platform ID ${row.deviceSource} not found!`));
                     continue;
                 }
 
                 if(runtimeMinVersion && !this.isVersionGreaterOrEqual(device.osVersion, runtimeMinVersion)) {
-                    console.log(device.osVersion, '<', runtimeMinVersion);
                     ignoredDevices.push(device.deviceName);
                     continue;
                 }
 
+                devices.push({ name: device.deviceName, perfect: true });
                 sources.push(row.deviceSource);
-                devices.push(device.deviceName);
             } else if(row.screenType && row.screenResolution && row.cpuPlatform) {
                 // Generic model
                 const [w, h] = row.screenResolution.split("x").map((r) => parseInt(r));
-                const devs = await getDevicesByParams(row.screenType, w, h, row.cpuPlatform.toLowerCase());
+                const results = await getDevicesByParams(row.screenType, w, h, row.cpuPlatform.toLowerCase());
 
-                for(const row of devs) {
-                    if(runtimeMinVersion && !this.isVersionGreaterOrEqual(row.osVersion, runtimeMinVersion)) {
-                        ignoredDevices.push(row.deviceName);
+                for (const res of results) {
+                    if (runtimeMinVersion && !this.isVersionGreaterOrEqual(res.data.osVersion, runtimeMinVersion)) {
+                        ignoredDevices.push(res.data.deviceName);
                         continue;
                     }
 
-                    devices.push(row.deviceName);
-                    sources.push(...row.deviceSource);
+                    devices.push({
+                        name: res.data.deviceName,
+                        perfect: res.perfect,
+                    });
+                    sources.push(...res.data.deviceSource);
                 }
-            } else {
-                console.warn("Skip unsupported platform declaration schema", row);
             }
         }
 
@@ -98,44 +103,42 @@ export class SelfHostConfigsGenerator {
             const downloadUrl = `${baseUrl}${basePath}/${row.name}`;
             const qrUrl = qrUrlTemplate.replace("%basename%", basename);
 
+            // Обработка Watchface (упрощено)
             if(this.bundle.appType === "watchface") {
                 files[`${basename}.json`] = {
-                    "appid": this.bundle.appId,
-                    "name": this.bundle.appName,
-                    "updated_at": Date.now(),
-                    "url": downloadUrl,
-                    "preview": "https://mmk.pw/static/favicon/mmk.pw/favicon-120x120.png",
-                    "devices": sources,
-                }
+                    appid: this.bundle.appId,
+                    name: this.bundle.appName,
+                    updated_at: Date.now(),
+                    url: downloadUrl,
+                    devices: sources,
+                    // TODO: Иконка получше (вообще без неё толком не работает)
+                    preview: "https://mmk.pw/static/favicon/mmk.pw/favicon-120x120.png",
+                };
             }
 
-            for(const pl of sources) {
-                if(sourceUrl[pl]) {
-                    sourceUrl[pl].push(downloadUrl);
-                } else {
-                    sourceUrl[pl] = [downloadUrl]
-                }
+            // Наполнение source_redirect
+            for (const pl of sources) {
+                if (!sourceUrl[pl]) sourceUrl[pl] = downloadUrl;
             }
 
-            for(const device of devices) {
-                if(deviceQr[device]) {
-                    deviceQr[device].push(qrUrl);
-                } else {
-                    deviceQr[device] = [qrUrl];
+            // Наполнение device_qr с учетом ПРИОРИТЕТА
+            for (const dev of devices) {
+                // Если устройства еще нет ИЛИ текущее совпадение "идеальное", а старое было "мягким"
+                if (!deviceQr[dev.name] || (!deviceQr[dev.name].perfect && dev.perfect)) {
+                    deviceQr[dev.name] = {
+                        url: qrUrl,
+                        perfect: dev.perfect,
+                    };
+                    debugLog(chalk.gray(`      [LOGIC] Assigned ${qrUrl} to ${dev.name} (Perfect: ${dev.perfect})`));
                 }
             }
         }
-
-        // Tools
-        const flatMap = (map) => Object.fromEntries(
-            Object.entries(map).map(([k, v]) => [k, v[0]])
-        );
 
         files["map.json"] = {
-            "device_qr": flatMap(deviceQr),
-            "source_redirect": flatMap(sourceUrl),
-            "ignored_devices": Object.values(Object.fromEntries(allIgnoredDevices.map((i) => [i, i]))),
-        }
+            device_qr: Object.fromEntries(Object.entries(deviceQr).map(([name, obj]) => [name, obj.url])),
+            source_redirect: sourceUrl,
+            ignored_devices: [...new Set(allIgnoredDevices)],
+        };
 
         return files;
     }

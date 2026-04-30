@@ -1,5 +1,6 @@
 import Zip from "adm-zip";
-import {createHash} from "node:crypto";
+import { createHash } from "node:crypto";
+import {debugLog} from "./helpers.js";
 
 export class ZeppBundle {
     constructor() {
@@ -75,6 +76,11 @@ export class ZeppBundle {
         }
 
         this.packages[packageFile.entryName] = pkgData;
+
+        if (this.packagesDeviceManifests[packageFile.entryName]) {
+            const manifest = this.packagesDeviceManifests[packageFile.entryName];
+            debugLog(`[ZAB EXTRACT] Found manifest for ${packageFile.entryName}. AppID: ${manifest.app?.appId}`);
+        }
     }
 
     buildPackage(pkgData) {
