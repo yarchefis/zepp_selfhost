@@ -172,6 +172,7 @@ export class SelfHostConfigsGenerator {
       ),
       source_redirect: sourceUrl,
       ignored_devices: [...new Set(allIgnoredDevices)],
+      soft_match_devices: Object.entries(deviceQr).filter(it => !it[1].perfect).map(it => it[0]),
     };
 
     return files;

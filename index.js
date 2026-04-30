@@ -66,6 +66,7 @@ export async function processProject(zabPath, userChoose) {
         const allDevices = await getAllKnownDeviceNames();
         const supported = Object.keys(mapJson["device_qr"]);
         const excluded = mapJson.ignored_devices;
+        const softMatch = mapJson.soft_match_devices;
         const mapped = [...supported, ...excluded];
         const unsupported = [];
 
@@ -91,6 +92,13 @@ export async function processProject(zabPath, userChoose) {
             console.log(
                 chalk.bold("Excluded due to OS/API version:"),
                 excluded.map(it => chalk.yellowBright(it)).join(", "),
+            );
+        }
+
+        if(softMatch.length > 0) {
+            console.log(
+                chalk.bold("Supported, but maybe broken (chipset mismatch):"),
+              softMatch.map(it => chalk.yellowBright(it)).join(", "),
             );
         }
 
