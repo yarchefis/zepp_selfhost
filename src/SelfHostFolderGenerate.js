@@ -18,7 +18,14 @@ export class SelfHostFolderGenerate {
   }
 
   async apply(baseUrl, withSubFolder) {
-    // Prepare serve directory
+    // 1. Сначала получаем данные конфигов и карту имен
+    const { files, nameMapping } = await SelfHostConfigsGenerator.apply(
+      this.bundle,
+      baseUrl,
+      withSubFolder,
+    );
+
+    // Подготовка директории для раздачи
     const rootDir = path.dirname(this.bundle.fileLocation) + "/serve";
     const serveDir = withSubFolder
       ? `${rootDir}/${this.bundle.appId}`
@@ -28,18 +35,18 @@ export class SelfHostFolderGenerate {
       await fs.promises.rm(rootDir, { recursive: true });
     await fs.promises.mkdir(serveDir, { recursive: true });
 
-    // Write all packages
+    // 2. Записываем все пакеты (ZPK)
     for (const [pkgName, pkgData] of Object.entries(this.bundle.packages)) {
       const pkgFile = this.bundle.buildPackage(pkgData);
-      await fs.promises.writeFile(`${serveDir}/${pkgName}`, pkgFile);
+
+      // Используем человекоподобное имя из маппинга.
+      // Если его нет, оставляем оригинальное имя pkgName.
+      const finalFileName = nameMapping[pkgName] || pkgName;
+
+      await fs.promises.writeFile(`${serveDir}/${finalFileName}`, pkgFile);
     }
 
-    // Write all maps
-    const files = await SelfHostConfigsGenerator.apply(
-      this.bundle,
-      baseUrl,
-      withSubFolder,
-    );
+    // 3. Записываем файлы конфигурации (map.json и прочие)
     for (const [fileName, fileData] of Object.entries(files)) {
       await fs.promises.writeFile(
         `${serveDir}/${fileName}`,

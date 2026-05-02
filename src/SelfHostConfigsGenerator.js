@@ -105,6 +105,7 @@ export class SelfHostConfigsGenerator {
     const sourceUrl = {};
     const deviceQr = {};
     const files = {};
+    const nameMapping = {};
     const allIgnoredDevices = [];
 
     const isApp = this.bundle.appType === "app";
@@ -128,13 +129,26 @@ export class SelfHostConfigsGenerator {
         ...ignoredDevices.map((name) => name.replace(/^Amazfit\s+/i, "")),
       );
 
-      const basename = row.name.replace(".zpk", "");
-      const downloadUrl = `${baseUrl}${basePath}/${row.name}`;
-      const qrUrl = qrUrlTemplate.replace("%basename%", basename);
+      let finalBasename = row.name.replace(".zpk", "");
+      let newFileName = row.name;
+
+      if (isApp && row.platforms && row.platforms[0]) {
+        const platform = row.platforms[0];
+        const shapePrefix = platform.screenType[0];
+        const cpu = platform.cpuPlatform.toUpperCase();
+        const res = platform.screenResolution;
+        finalBasename = `${shapePrefix}-${cpu}-${res}`;
+        newFileName = `${finalBasename}.zpk`;
+      }
+
+      nameMapping[row.name] = newFileName;
+
+      const downloadUrl = `${baseUrl}${basePath}/${newFileName}`;
+      const qrUrl = qrUrlTemplate.replace("%basename%", finalBasename);
 
       // Обработка Watchface (упрощено)
       if (this.bundle.appType === "watchface") {
-        files[`${basename}.json`] = {
+        files[`${finalBasename}.json`] = {
           appid: this.bundle.appId,
           name: this.bundle.appName,
           updated_at: Date.now(),
@@ -194,6 +208,6 @@ export class SelfHostConfigsGenerator {
         .sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
     };
 
-    return files;
+    return { files, nameMapping };
   }
 }
