@@ -123,7 +123,11 @@ export class SelfHostConfigsGenerator {
         row.platforms,
         deviceManifest,
       );
-      allIgnoredDevices.push(...ignoredDevices);
+
+      // Чистим игнорируемые устройства от Amazfit
+      allIgnoredDevices.push(
+        ...ignoredDevices.map((name) => name.replace(/^Amazfit\s+/i, "")),
+      );
 
       let finalBasename = row.name.replace(".zpk", "");
       let newFileName = row.name;
@@ -162,33 +166,46 @@ export class SelfHostConfigsGenerator {
 
       // Наполнение device_qr с учетом ПРИОРИТЕТА
       for (const dev of devices) {
-        // Если устройства еще нет ИЛИ текущее совпадение "идеальное", а старое было "мягким"
+        // Убираем Amazfit из названия перед использованием в качестве ключа
+        const cleanName = dev.name.replace(/^Amazfit\s+/i, "");
+
         if (
-          !deviceQr[dev.name] ||
-          (!deviceQr[dev.name].perfect && dev.perfect)
+          !deviceQr[cleanName] ||
+          (!deviceQr[cleanName].perfect && dev.perfect)
         ) {
-          deviceQr[dev.name] = {
+          deviceQr[cleanName] = {
             url: qrUrl,
             perfect: dev.perfect,
           };
           debugLog(
             chalk.gray(
-              `      [LOGIC] Assigned ${qrUrl} to ${dev.name} (Perfect: ${dev.perfect})`,
+              `      [LOGIC] Assigned ${qrUrl} to ${cleanName} (Perfect: ${dev.perfect})`,
             ),
           );
         }
       }
     }
 
+    // Сортировка device_qr по алфавиту (localeCompare учитывает числа в названиях)
+    const sortedDeviceQrEntries = Object.entries(deviceQr).sort((a, b) =>
+      a[0].localeCompare(b[0], undefined, {
+        numeric: true,
+        sensitivity: "base",
+      }),
+    );
+
     files["map.json"] = {
       device_qr: Object.fromEntries(
-        Object.entries(deviceQr).map(([name, obj]) => [name, obj.url]),
+        sortedDeviceQrEntries.map(([name, obj]) => [name, obj.url]),
       ),
       source_redirect: sourceUrl,
-      ignored_devices: [...new Set(allIgnoredDevices)],
+      ignored_devices: [...new Set(allIgnoredDevices)].sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true }),
+      ),
       soft_match_devices: Object.entries(deviceQr)
         .filter((it) => !it[1].perfect)
-        .map((it) => it[0]),
+        .map((it) => it[0])
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
     };
 
     return { files, nameMapping };
